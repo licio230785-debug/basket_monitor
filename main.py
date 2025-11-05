@@ -1,62 +1,55 @@
+import os
 import requests
 import time
-from flask import Flask
 import telegram
+from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask
+import imghdr  # <- Import manual, para evitar erro em Python 3.13+
 
 # === CONFIGURAÇÕES ===
-API_KEY = "6ce654faba46ec305b54c92a334aa71e"
-TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
-CHAT_ID = "701402918"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "COLOQUE_SEU_TOKEN_AQUI"
+CHAT_ID = os.getenv("CHAT_ID") or "COLOQUE_SEU_CHAT_ID_AQUI"
 
-# === CONFIGURAÇÃO DO BOT ===
 bot = telegram.Bot(token=TELEGRAM_TOKEN)
-
-def enviar_alerta(msg):
-    """Envia uma mensagem para o Telegram"""
-    bot.send_message(chat_id=CHAT_ID, text=msg)
-
-def monitorar_jogos():
-    """Verifica os jogos e envia alerta quando o padrão for detectado"""
-    url = "https://v1.basketball.api-sports.io/games?live=all"
-    headers = {"x-apisports-key": API_KEY}
-
-    try:
-        response = requests.get(url, headers=headers)
-        data = response.json()
-    except Exception as e:
-        print("Erro ao acessar API:", e)
-        return
-
-    for game in data.get("response", []):
-        league_country = game["league"]["country"]
-        if league_country.lower() == "usa":
-            continue  # pula ligas dos EUA
-
-        home_team = game["teams"]["home"]["name"]
-        away_team = game["teams"]["away"]["name"]
-        scores = game.get("scores", {})
-        first_quarter = scores.get("quarter_1", {})
-
-        if not first_quarter or first_quarter.get("home") is None:
-            continue
-
-        home_points = first_quarter.get("home", 0)
-        away_points = first_quarter.get("away", 0)
-
-        for team_name, pontos in [(home_team, home_points), (away_team, away_points)]:
-            if pontos >= 28:
-                under = 108 + (pontos - 28) * 4
-                msg = f"⚠️ {team_name} fez {pontos} pontos no 1º quarto.\n🎯 Entrada sugerida: UNDER {under} pontos."
-                enviar_alerta(msg)
-
 app = Flask(__name__)
+
+# Função simulada de busca de dados (substitua pela sua API)
+def get_games_data():
+    # Exemplo fictício
+    return [
+        {"home_team": "Lakers", "home_points_q1": 29, "away_team": "Heat", "away_points_q1": 25},
+        {"home_team": "Bulls", "home_points_q1": 28, "away_team": "Celtics", "away_points_q1": 20},
+    ]
+
+# === LÓGICA DO ALERTA ===
+def check_games():
+    games = get_games_data()
+
+    for game in games:
+        for team, points in [(game["home_team"], game["home_points_q1"]),
+                             (game["away_team"], game["away_points_q1"])]:
+            
+            if points >= 28:
+                base = 108
+                diff = points - 28
+                under_value = base + (diff * 4)
+                
+                message = (
+                    f"⚠️ *Alerta no 1º Quarto!*\n\n"
+                    f"🏀 {team} marcou *{points} pontos* no 1º quarto.\n"
+                    f"🎯 Entrada sugerida: *UNDER {under_value} pontos* no jogo.\n"
+                )
+                
+                bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
+
+# === SCHEDULER E SERVIDOR ===
+scheduler = BackgroundScheduler()
+scheduler.add_job(check_games, 'interval', minutes=1)
+scheduler.start()
 
 @app.route('/')
 def home():
-    return "Bot rodando com sucesso!"
+    return "🏀 Basket Monitor ativo!"
 
 if __name__ == "__main__":
-    enviar_alerta("🤖 Bot de monitoramento iniciado no Render!")
-    while True:
-        monitorar_jogos()
-        time.sleep(60)
+    app.run(host="0.0.0.0", port=10000)
