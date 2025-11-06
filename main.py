@@ -1,3 +1,5 @@
+import pytz
+
 import os
 import requests
 from flask import Flask
@@ -60,7 +62,8 @@ def check_live_games():
         print("Erro ao buscar jogos:", e)
 
 # 🔁 Agenda o monitoramento a cada 1 minuto
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone=pytz.timezone("America/Sao_Paulo"))
+
 scheduler.add_job(check_live_games, "interval", minutes=1)
 scheduler.start()
 
