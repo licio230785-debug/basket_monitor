@@ -1,88 +1,104 @@
 import os
 import requests
-import pytz
+import asyncio
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask
 from telegram import Bot
+from pytz import utc
 
 # === CONFIGURAÇÕES ===
+API_KEY = os.getenv("API_KEY") or "b5b035abff480dc80693155634fb38d0"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
 CHAT_ID = os.getenv("CHAT_ID") or "701402918"
-API_KEY = os.getenv("API_KEY") or "b5b035abff480dc80693155634fb38d0"
 
 bot = Bot(token=TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-# Armazena os alertas já enviados (para não repetir)
-sent_alerts = set()
+# Dicionário para armazenar alertas já enviados
+sent_alerts = {}
 
-# === FUNÇÃO PARA OBTER DADOS DOS JOGOS AO VIVO ===
+# === FUNÇÃO PARA OBTER JOGOS AO VIVO ===
 def get_live_games():
-    url = "https://v1.basketball.api-sports.io/games?live=all"
-    headers = {"x-apisports-key": API_KEY}
-
+    url = "https://api-basketball.p.rapidapi.com/games"
+    headers = {
+        "x-rapidapi-key": API_KEY,
+        "x-rapidapi-host": "api-basketball.p.rapidapi.com"
+    }
+    params = {"live": "all"}
+    
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, params=params, timeout=15)
         data = response.json()
-
-        # ✅ Log para confirmar que está checando
-        total = len(data.get("response", []))
-        print(f"🕒 Checando jogos ao vivo... encontrados {total} jogos.")
-
-        games = []
-        for game in data.get("response", []):
-            home = game["teams"]["home"]["name"]
-            away = game["teams"]["away"]["name"]
-            scores = game["scores"]
-            q1_home = scores["home"].get("quarter_1", 0)
-            q1_away = scores["away"].get("quarter_1", 0)
-            status = game["status"]["short"]
-
-            games.append({
-                "home_team": home,
-                "away_team": away,
-                "home_points_q1": q1_home,
-                "away_points_q1": q1_away,
-                "status": status
-            })
+        games = data.get("response", [])
+        print(f"🕒 Checando jogos ao vivo... encontrados {len(games)} jogos.")
         return games
     except Exception as e:
-        print(f"⚠️ Erro ao buscar dados da API: {e}")
+        print(f"❌ Erro ao buscar jogos: {e}")
         return []
 
-# === FUNÇÃO PARA VERIFICAR JOGOS E ENVIAR ALERTAS ===
-def check_games():
+# === LÓGICA DE ALERTA ===
+async def check_games():
     games = get_live_games()
+
     for game in games:
-        home = game["home_team"]
-        away = game["away_team"]
-        total_points = game["home_points_q1"] + game["away_points_q1"]
+        try:
+            fixture_id = game["id"]
+            teams = game["teams"]
+            scores = game.get("scores", {})
 
-        alert_id = f"{home}-{away}-Q1"
+            home_team = teams["home"]["name"]
+            away_team = teams["away"]["name"]
 
-        if total_points >= 48 and alert_id not in sent_alerts:
-            message = (
-                f"⚠️ Alerta no 1º Quarto!\n\n"
-                f"🏀 {home} marcou {game['home_points_q1']} pontos no 1º quarto.\n"
-                f"🎯 Entrada sugerida: UNDER 108 pontos no jogo.\n"
-                f"🔗 [Abrir Bet365](https://www.bet365.com)"
-            )
-            try:
-                bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown", disable_web_page_preview=True)
-                sent_alerts.add(alert_id)
-                print(f"✅ Alerta enviado: {home} x {away}")
-            except Exception as e:
-                print(f"❌ Erro ao enviar mensagem: {e}")
+            q1_home = scores.get("quarter_1", {}).get("home")
+            q1_away = scores.get("quarter_1", {}).get("away")
 
-# === SCHEDULER ===
-scheduler = BackgroundScheduler(timezone=pytz.timezone("America/Sao_Paulo"))
-scheduler.add_job(check_games, "interval", minutes=1)
+            if q1_home is None or q1_away is None:
+                continue  # ainda não começou ou sem dados do 1º quarto
+
+            print(f"📊 {home_team} ({q1_home}) x {away_team} ({q1_away})")
+
+            # Checa se algum time marcou >= 28 no 1º quarto
+            for team, points in [(home_team, q1_home), (away_team, q1_away)]:
+                if points >= 28:
+                    alert_key = f"{fixture_id}_{team}"
+                    if alert_key in sent_alerts:
+                        print(f"⚠️ Alerta já enviado para {team}, ignorando...")
+                        continue
+
+                    base = 108
+                    diff = points - 28
+                    under_value = base + (diff * 4)
+
+                    message = (
+                        f"⚠️ *Alerta no 1º Quarto!*\n\n"
+                        f"🏀 {team} marcou *{points} pontos* no 1º quarto.\n"
+                        f"🎯 Entrada sugerida: *UNDER {under_value} pontos* no jogo.\n"
+                        f"🔗 Abrir Bet365"
+                    )
+
+                    try:
+                        await bot.send_message(
+                            chat_id=CHAT_ID,
+                            text=message,
+                            parse_mode="Markdown",
+                            disable_web_page_preview=True
+                        )
+                        sent_alerts[alert_key] = True
+                        print(f"✅ Alerta enviado: {team} - {points} pontos.")
+                    except Exception as e:
+                        print(f"❌ Erro ao enviar alerta para {team}: {e}")
+        except Exception as e:
+            print(f"⚠️ Erro ao processar jogo: {e}")
+
+# === SCHEDULER E SERVIDOR ===
+scheduler = BackgroundScheduler(timezone=utc)
+scheduler.add_job(lambda: asyncio.run(check_games()), "interval", minutes=1)
 scheduler.start()
 
 @app.route("/")
 def home():
-    return "🚀 Servidor ativo e monitorando jogos de basquete!"
+    return "🏀 Basket Monitor ativo e monitorando jogos ao vivo!"
 
 if __name__ == "__main__":
     print("🚀 Servidor iniciado com sucesso!")
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
