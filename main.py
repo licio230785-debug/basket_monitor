@@ -6,8 +6,8 @@ from flask import Flask
 from telegram import Bot
 
 # === CONFIGURAÇÕES ===
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "COLOQUE_SEU_TOKEN_AQUI"
-CHAT_ID = os.getenv("CHAT_ID") or "COLOQUE_SEU_CHAT_ID_AQUI"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
+CHAT_ID = os.getenv("CHAT_ID") or "701402918"
 
 bot = Bot(token=TELEGRAM_TOKEN)
 app = Flask(__name__)
