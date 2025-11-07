@@ -30,7 +30,7 @@ def get_live_games():
         response = requests.get(url, headers=headers, params=params, timeout=15)
         data = response.json()
         games = data.get("response", [])
-        print(f"🕒 [LOG] Checando jogos ao vivo... encontrados {len(games)} jogos.")
+        print(f"🕒 Checando jogos ao vivo... encontrados {len(games)} jogos.")
         return games
     except Exception as e:
         print(f"❌ Erro ao buscar jogos: {e}")
@@ -38,7 +38,7 @@ def get_live_games():
 
 # === LÓGICA DE ALERTA ===
 async def check_games():
-    print("🔍 [LOG] Iniciando checagem de jogos...")
+    print("🕒 [LOG] Checando jogos...")  # Log para confirmar execução da função
     games = get_live_games()
 
     for game in games:
@@ -58,6 +58,7 @@ async def check_games():
 
             print(f"📊 {home_team} ({q1_home}) x {away_team} ({q1_away})")
 
+            # Checa se algum time marcou >= 28 no 1º quarto
             for team, points in [(home_team, q1_home), (away_team, q1_away)]:
                 if points >= 28:
                     alert_key = f"{fixture_id}_{team}"
@@ -93,6 +94,7 @@ async def check_games():
 # === SCHEDULER E SERVIDOR ===
 scheduler = BackgroundScheduler(timezone=utc)
 scheduler.add_job(lambda: asyncio.run(check_games()), "interval", minutes=1)
+print("⏱️ Agendador iniciado! Checando jogos a cada 1 minuto...")  # Log para confirmar inicialização
 scheduler.start()
 
 @app.route("/")
@@ -101,5 +103,4 @@ def home():
 
 if __name__ == "__main__":
     print("🚀 Servidor iniciado com sucesso!")
-    asyncio.run(check_games())  # 🔥 Checa imediatamente ao iniciar
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
