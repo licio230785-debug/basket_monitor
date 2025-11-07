@@ -12,14 +12,12 @@ API_KEY = os.getenv("API_KEY") or "b5b035abff480dc80693155634fb38d0"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
 CHAT_ID = os.getenv("CHAT_ID") or "701402918"
 
-# inicializa
 bot = Bot(token=TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-# armazena alertas enviados (chave: "<fixture_id>_<team_name>")
 sent_alerts = set()
 
-# === FUNÇÃO: busca jogos ao vivo na API-Basketball (via RapidAPI) ===
+# === FUNÇÃO: buscar jogos ao vivo ===
 def get_live_games():
     url = "https://api-basketball.p.rapidapi.com/games"
     headers = {
@@ -30,22 +28,21 @@ def get_live_games():
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        print(f"🕒 [{now}] Requisição: buscando jogos ao vivo...")
+        print(f"🕒 [{now}] Buscando jogos ao vivo...")
         resp = requests.get(url, headers=headers, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         games = data.get("response", [])
-        print(f"🕒 [{now}] Foram encontrados {len(games)} jogos ao vivo.")
+        print(f"🕒 [{now}] {len(games)} jogos encontrados ao vivo.")
         return games
     except Exception as e:
         print(f"❌ [{now}] Erro ao buscar jogos: {e}")
         return []
 
-# === LÓGICA DE ALERTA (assíncrona) ===
+# === ALERTAS DE JOGOS ===
 async def check_games():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"⏱️ [{now}] Iniciando checagem de jogos...")
-
     games = get_live_games()
 
     if not games:
@@ -58,61 +55,37 @@ async def check_games():
             teams = game.get("teams", {})
             scores = game.get("scores", {})
 
-            # nomes
             home_team = teams.get("home", {}).get("name")
             away_team = teams.get("away", {}).get("name")
 
-            # valores do 1º quarto (podem estar em estruturas distintas dependendo da resposta)
             q1_home = None
             q1_away = None
-
-            # Tentativas de extrair os dados do JSON retornado por diferentes formatos
             if isinstance(scores, dict):
-                # versão onde quarter_1 é um dict com 'home' e 'away'
                 q1 = scores.get("quarter_1")
                 if isinstance(q1, dict):
-                    q1_home = q1.get("home") or 0
-                    q1_away = q1.get("away") or 0
-                # caso a API retorne por 'home'/'away' em scores diretamente
-                else:
-                    # tenta acessar scores["home"]["quarter_1"] (fallback)
-                    try:
-                        q1_home = scores.get("home", {}).get("quarter_1") or scores.get("home", {}).get("points")
-                        q1_away = scores.get("away", {}).get("quarter_1") or scores.get("away", {}).get("points")
-                    except Exception:
-                        q1_home = q1_home or 0
-                        q1_away = q1_away or 0
+                    q1_home = q1.get("home")
+                    q1_away = q1.get("away")
 
-            # converte para int (segurança)
             try:
                 q1_home = int(q1_home) if q1_home is not None else None
-            except Exception:
-                q1_home = None
-            try:
                 q1_away = int(q1_away) if q1_away is not None else None
-            except Exception:
-                q1_away = None
+            except:
+                pass
 
-            # Se não tiver dados do 1º quarto, pula
             if q1_home is None and q1_away is None:
-                # imprime que não há dados de Q1 para este jogo
-                print(f"ℹ️ [{now}] Sem dados do Q1 para: {home_team} x {away_team} (fixture {fixture_id}).")
+                print(f"ℹ️ [{now}] Sem dados do Q1 para {home_team} x {away_team}.")
                 continue
 
-            # imprime placar do 1º quarto para debug
             print(f"📊 [{now}] {home_team} ({q1_home}) x {away_team} ({q1_away})")
 
-            # verifica cada time
             for team_name, points in ((home_team, q1_home), (away_team, q1_away)):
                 if points is None:
                     continue
                 if points >= 28:
                     alert_key = f"{fixture_id}_{team_name}"
                     if alert_key in sent_alerts:
-                        print(f"⚠️ [{now}] Alerta já enviado: {team_name} (fixture {fixture_id}).")
                         continue
 
-                    # calcula under sugerido
                     base = 108
                     diff = points - 28
                     under_value = base + (diff * 4)
@@ -127,42 +100,70 @@ async def check_games():
                     try:
                         await bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown", disable_web_page_preview=True)
                         sent_alerts.add(alert_key)
-                        print(f"✅ [{now}] Alerta enviado: {team_name} - {points} pontos (fixture {fixture_id}).")
+                        print(f"✅ [{now}] Alerta enviado: {team_name} - {points} pontos.")
                     except Exception as e:
-                        print(f"❌ [{now}] Erro ao enviar alerta para {team_name}: {e}")
+                        print(f"❌ [{now}] Erro ao enviar alerta: {e}")
 
         except Exception as e:
             print(f"⚠️ [{now}] Erro processando jogo: {e}")
 
-# === SCHEDULER E SERVER ===
+# === NOVA FUNÇÃO: aviso de status (com contador de jogos) ===
+async def send_status_message():
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        games = get_live_games()
+        total_games = len(games)
+        message = f"🤖 Bot ativo e monitorando jogos!\n\n📊 Jogos ao vivo no momento: *{total_games}*\n🕒 ({now})"
+        await bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
+        print(f"📩 [{now}] Mensagem de status enviada ao Telegram. ({total_games} jogos ao vivo)")
+    except Exception as e:
+        print(f"❌ [{now}] Erro ao enviar mensagem de status: {e}")
+
+# === SCHEDULER ===
 tz = pytz.timezone("America/Sao_Paulo")
 scheduler = BackgroundScheduler(timezone=tz)
 
-# job wrapper: roda a coroutine check_games() de forma segura
 def job_wrapper():
     try:
         asyncio.run(check_games())
     except Exception as e:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"❌ [{now}] Erro no job_wrapper: {e}")
+        print(f"❌ Erro no job_wrapper: {e}")
 
-# agenda a cada 60 segundos
+def status_wrapper():
+    try:
+        asyncio.run(send_status_message())
+    except Exception as e:
+        print(f"❌ Erro no status_wrapper: {e}")
+
+# executa a cada 60 segundos (checagem de jogos)
 scheduler.add_job(job_wrapper, "interval", seconds=60)
-print("⏱️ Agendador configurado: checando jogos a cada 60 segundos.")
+# executa a cada 10 minutos (mensagem de status)
+scheduler.add_job(status_wrapper, "interval", minutes=10)
+
 scheduler.start()
+print("⏱️ Agendador configurado: jogos a cada 60s / status a cada 10min.")
 
 @app.route("/")
 def home():
     return "🏀 Basket Monitor ativo e monitorando jogos ao vivo!"
 
+# === INÍCIO ===
 if __name__ == "__main__":
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"🚀 Servidor iniciado com sucesso! ({now}) — executando checagem inicial agora.")
-    # checagem imediata ao iniciar (garante log e teste)
+    print(f"🚀 Servidor iniciado com sucesso! ({now})")
+
+    # envia aviso de inicialização
+    try:
+        asyncio.run(bot.send_message(chat_id=CHAT_ID, text=f"✅ Bot iniciado com sucesso! ({now})"))
+        print(f"📢 [{now}] Mensagem inicial enviada ao Telegram.")
+    except Exception as e:
+        print(f"❌ [{now}] Erro ao enviar mensagem inicial: {e}")
+
+    # primeira checagem imediata
     try:
         asyncio.run(check_games())
     except Exception as e:
         print(f"❌ [{now}] Erro na checagem inicial: {e}")
-    # roda o servidor Flask (Render espera app web rodando)
+
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
