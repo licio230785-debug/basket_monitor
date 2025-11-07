@@ -12,11 +12,11 @@ import pytz  # ✅ Importamos pytz para timezone
 
 API_URL = "https://api-basketball.p.rapidapi.com/games?live=all"
 HEADERS = {
-    "x-rapidapi-key": "SUA_CHAVE_RAPIDAPI_AQUI",  # substitua pela sua nova chave
+    "x-rapidapi-key": "3d94e019c7df157824472596bdc20a05",  # substitua pela sua nova chave
     "x-rapidapi-host": "api-basketball.p.rapidapi.com"
 }
-TELEGRAM_TOKEN = "SEU_TOKEN_AQUI"
-CHAT_ID = "SEU_CHAT_ID_AQUI"
+TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
+CHAT_ID = "701402918"
 
 # Configura timezone (horário de Brasília)
 TIMEZONE = pytz.timezone("America/Sao_Paulo")
