@@ -4,6 +4,7 @@ from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import time
+import pytz  # ✅ Importamos pytz para timezone
 
 # ========================
 # CONFIGURAÇÕES GERAIS
@@ -11,11 +12,14 @@ import time
 
 API_URL = "https://api-basketball.p.rapidapi.com/games?live=all"
 HEADERS = {
-    "x-rapidapi-key": "6ce654faba46ec305b54c92a334aa71e",  # substitua pela sua nova chave
+    "x-rapidapi-key": "SUA_CHAVE_RAPIDAPI_AQUI",  # substitua pela sua nova chave
     "x-rapidapi-host": "api-basketball.p.rapidapi.com"
 }
-TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
-CHAT_ID = "701402918"
+TELEGRAM_TOKEN = "SEU_TOKEN_AQUI"
+CHAT_ID = "SEU_CHAT_ID_AQUI"
+
+# Configura timezone (horário de Brasília)
+TIMEZONE = pytz.timezone("America/Sao_Paulo")
 
 # ========================
 # FLASK APP
@@ -34,7 +38,7 @@ def home():
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 def log(msg):
-    hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    hora = datetime.now(TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
     print(f"{hora} | {msg}")
 
 # ========================
@@ -82,13 +86,13 @@ def checar_jogos():
 
 def enviar_status():
     """Envia mensagem de status periódico"""
-    msg = f"✅ Bot ativo e funcionando normalmente. ({datetime.now().strftime('%H:%M:%S')})"
+    msg = f"✅ Bot ativo e funcionando normalmente. ({datetime.now(TIMEZONE).strftime('%H:%M:%S')})"
     log(msg)
     enviar_telegram(msg)
 
 def iniciar_bot():
     """Envia mensagem inicial"""
-    msg = f"🚀 Bot iniciado com sucesso! ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+    msg = f"🚀 Bot iniciado com sucesso! ({datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')})"
     enviar_telegram(msg)
     log("📢 Mensagem inicial enviada ao Telegram.")
 
@@ -96,7 +100,7 @@ def iniciar_bot():
 # SCHEDULER (TAREFAS)
 # ========================
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone=TIMEZONE)  # ✅ definimos o timezone aqui
 scheduler.add_job(checar_jogos, "interval", seconds=60, id="checagem_jogos")
 scheduler.add_job(enviar_status, "interval", minutes=10, id="status_bot")
 scheduler.start(paused=False)
@@ -110,5 +114,5 @@ log("⏱️ Agendador configurado: jogos a cada 60s / status a cada 10min.")
 if __name__ == "__main__":
     time.sleep(2)
     iniciar_bot()
-    log(f"🚀 Servidor iniciado com sucesso! ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    log(f"🚀 Servidor iniciado com sucesso! ({datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')})")
     app.run(host="0.0.0.0", port=10000)
