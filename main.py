@@ -38,7 +38,6 @@ def get_live_games():
 
 # === LÓGICA DE ALERTA ===
 async def check_games():
-     print("🔄 Checando jogos ao vivo...")
     games = get_live_games()
 
     for game in games:
