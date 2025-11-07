@@ -1,6 +1,7 @@
 import os
 import requests
 import asyncio
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask
 from telegram import Bot
@@ -25,24 +26,26 @@ def get_live_games():
         "x-rapidapi-host": "api-basketball.p.rapidapi.com"
     }
     params = {"live": "all"}
-    
+
+    hora = datetime.now().strftime("%H:%M:%S")
     try:
+        print(f"⏱️ [{hora}] Checando jogos ao vivo...")
         response = requests.get(url, headers=headers, params=params, timeout=15)
         data = response.json()
         games = data.get("response", [])
-        print(f"🕒 Checando jogos ao vivo... encontrados {len(games)} jogos.")
+        print(f"🕒 [{hora}] Foram encontrados {len(games)} jogos ao vivo.")
         return games
     except Exception as e:
-        print(f"❌ Erro ao buscar jogos: {e}")
+        print(f"❌ [{hora}] Erro ao buscar jogos: {e}")
         return []
 
 # === LÓGICA DE ALERTA ===
 async def check_games():
-    print("⏱️ Verificando jogos ao vivo...")
     games = get_live_games()
+    hora = datetime.now().strftime("%H:%M:%S")
 
     if not games:
-        print("⚠️ Nenhum jogo ao vivo no momento.")
+        print(f"🔍 [{hora}] Nenhum jogo ao vivo no momento.")
         return
 
     for game in games:
@@ -60,14 +63,14 @@ async def check_games():
             if q1_home is None or q1_away is None:
                 continue  # ainda não começou ou sem dados do 1º quarto
 
-            print(f"📊 {home_team} ({q1_home}) x {away_team} ({q1_away})")
+            print(f"📊 [{hora}] {home_team} ({q1_home}) x {away_team} ({q1_away})")
 
             # Checa se algum time marcou >= 28 no 1º quarto
             for team, points in [(home_team, q1_home), (away_team, q1_away)]:
                 if points >= 28:
                     alert_key = f"{fixture_id}_{team}"
                     if alert_key in sent_alerts:
-                        print(f"⚠️ Alerta já enviado para {team}, ignorando...")
+                        print(f"⚠️ [{hora}] Alerta já enviado para {team}, ignorando...")
                         continue
 
                     base = 108
@@ -89,11 +92,11 @@ async def check_games():
                             disable_web_page_preview=True
                         )
                         sent_alerts[alert_key] = True
-                        print(f"✅ Alerta enviado: {team} - {points} pontos.")
+                        print(f"✅ [{hora}] Alerta enviado: {team} - {points} pontos.")
                     except Exception as e:
-                        print(f"❌ Erro ao enviar alerta para {team}: {e}")
+                        print(f"❌ [{hora}] Erro ao enviar alerta para {team}: {e}")
         except Exception as e:
-            print(f"⚠️ Erro ao processar jogo: {e}")
+            print(f"⚠️ [{hora}] Erro ao processar jogo: {e}")
 
 # === SCHEDULER E SERVIDOR ===
 scheduler = BackgroundScheduler(timezone=utc)
