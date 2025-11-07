@@ -8,7 +8,7 @@ from telegram import Bot
 import pytz
 
 # === CONFIGURAÇÕES ===
-API_KEY = os.getenv("API_KEY") or "b5b035abff480dc80693155634fb38d0"
+API_KEY = os.getenv("API_KEY") or "6ce654faba46ec305b54c92a334aa71e"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
 CHAT_ID = os.getenv("CHAT_ID") or "701402918"
 
