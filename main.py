@@ -1,134 +1,114 @@
-import os
 import requests
-import asyncio
-from apscheduler.schedulers.background import BackgroundScheduler
+import logging
 from flask import Flask
-from telegram import Bot
-from pytz import utc
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
+import time
 
-# === CONFIGURAÇÕES ===
-API_KEY = os.getenv("API_KEY") or "b5b035abff480dc80693155634fb38d0"  # RapidAPI
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
-CHAT_ID = os.getenv("CHAT_ID") or "701402918"
+# ========================
+# CONFIGURAÇÕES GERAIS
+# ========================
 
-bot = Bot(token=TELEGRAM_TOKEN)
+API_URL = "https://api-basketball.p.rapidapi.com/games?live=all"
+HEADERS = {
+    "x-rapidapi-key": "6ce654faba46ec305b54c92a334aa71e",  # substitua pela sua nova chave
+    "x-rapidapi-host": "api-basketball.p.rapidapi.com"
+}
+TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
+CHAT_ID = "701402918"
+
+# ========================
+# FLASK APP
+# ========================
+
 app = Flask(__name__)
 
-sent_alerts = {}
-
-# === FUNÇÃO PARA OBTER JOGOS AO VIVO (PRINCIPAL) ===
-def get_live_games_api_basketball():
-    print("🕒 [API-Basketball] Buscando jogos ao vivo...")
-    url = "https://api-basketball.p.rapidapi.com/games"
-    headers = {
-        "x-rapidapi-key": API_KEY,
-        "x-rapidapi-host": "api-basketball.p.rapidapi.com"
-    }
-    params = {"live": "all"}
-    response = requests.get(url, headers=headers, params=params, timeout=15)
-    response.raise_for_status()
-    data = response.json()
-    return data.get("response", [])
-
-# === BACKUP: API balldontlie.io ===
-def get_live_games_balldontlie():
-    print("🕒 [balldontlie.io] Buscando jogos (backup)...")
-    url = "https://api.balldontlie.io/v1/games"
-    headers = {"Authorization": "free"}
-    params = {"per_page": 25, "seasons[]": 2025}
-    response = requests.get(url, headers=headers, params=params, timeout=15)
-    data = response.json().get("data", [])
-    # A API balldontlie não tem flag "live", mas retornamos jogos do dia
-    live_games = [g for g in data if g.get("status") not in ["Final", "Scheduled"]]
-    return live_games
-
-# === FUNÇÃO UNIFICADA PARA OBTER JOGOS ===
-def get_live_games():
-    try:
-        return get_live_games_api_basketball()
-    except Exception as e:
-        print(f"⚠️ Erro na API principal ({e}), tentando backup...")
-        try:
-            return get_live_games_balldontlie()
-        except Exception as e2:
-            print(f"❌ Falha também na API backup: {e2}")
-            return []
-
-# === CHECAGEM DE JOGOS ===
-async def check_games():
-    print(f"⏱️ [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando checagem de jogos...")
-    games = get_live_games()
-
-    if not games:
-        print("ℹ️ Nenhum jogo ao vivo no momento.")
-        return
-
-    for game in games:
-        try:
-            home_team = game.get("teams", {}).get("home", {}).get("name") or game.get("home_team", {}).get("full_name")
-            away_team = game.get("teams", {}).get("away", {}).get("name") or game.get("visitor_team", {}).get("full_name")
-            if not home_team or not away_team:
-                continue
-
-            scores = game.get("scores", {})
-            q1_home = scores.get("quarter_1", {}).get("home") or game.get("home_team_score")
-            q1_away = scores.get("quarter_1", {}).get("away") or game.get("visitor_team_score")
-
-            if q1_home is None or q1_away is None:
-                continue
-
-            print(f"📊 {home_team} ({q1_home}) x {away_team} ({q1_away})")
-
-            for team, points in [(home_team, q1_home), (away_team, q1_away)]:
-                if points >= 28:
-                    alert_key = f"{home_team}_{away_team}_{team}"
-                    if alert_key in sent_alerts:
-                        continue
-
-                    base = 108
-                    diff = points - 28
-                    under_value = base + (diff * 4)
-
-                    message = (
-                        f"⚠️ *Alerta no 1º Quarto!*\n\n"
-                        f"🏀 {team} marcou *{points} pontos* no 1º quarto.\n"
-                        f"🎯 Entrada sugerida: *UNDER {under_value} pontos* no jogo.\n"
-                        f"🔗 Abrir Bet365"
-                    )
-
-                    await bot.send_message(
-                        chat_id=CHAT_ID,
-                        text=message,
-                        parse_mode="Markdown",
-                        disable_web_page_preview=True
-                    )
-                    sent_alerts[alert_key] = True
-                    print(f"✅ Alerta enviado: {team} - {points} pontos.")
-        except Exception as e:
-            print(f"⚠️ Erro ao processar jogo: {e}")
-
-# === MENSAGEM DE STATUS ===
-async def send_status():
-    msg = f"✅ Bot está rodando normalmente ({datetime.now().strftime('%H:%M:%S')})."
-    print(f"📢 {msg}")
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text=msg)
-    except Exception as e:
-        print(f"❌ Erro ao enviar status: {e}")
-
-# === INICIALIZAÇÃO ===
-scheduler = BackgroundScheduler(timezone=utc)
-scheduler.add_job(lambda: asyncio.run(check_games()), "interval", seconds=60)
-scheduler.add_job(lambda: asyncio.run(send_status()), "interval", minutes=10)
-scheduler.start()
-
-@app.route("/")
+@app.route('/')
 def home():
-    return "🏀 Basket Monitor ativo (com backup automático)."
+    return "🏀 Basket Monitor ativo e rodando!"
+
+# ========================
+# LOGS
+# ========================
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+def log(msg):
+    hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{hora} | {msg}")
+
+# ========================
+# FUNÇÕES DO BOT
+# ========================
+
+def enviar_telegram(msg: str):
+    """Envia mensagem para o Telegram"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        data = {"chat_id": CHAT_ID, "text": msg}
+        response = requests.post(url, data=data)
+        if response.status_code != 200:
+            log(f"⚠️ Falha ao enviar mensagem Telegram: {response.text}")
+    except Exception as e:
+        log(f"❌ Erro no envio para Telegram: {e}")
+
+def checar_jogos():
+    """Checa jogos ao vivo"""
+    log("⏱️ Iniciando checagem de jogos...")
+    try:
+        log("🕒 Buscando jogos ao vivo...")
+        resp = requests.get(API_URL, headers=HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if "response" in data and len(data["response"]) > 0:
+            jogos = data["response"]
+            log(f"🏀 {len(jogos)} jogos encontrados ao vivo.")
+            mensagem = "🏀 Jogos ao vivo:\n"
+            for jogo in jogos:
+                teams = jogo["teams"]
+                home = teams["home"]["name"]
+                away = teams["away"]["name"]
+                pontos = jogo["scores"]
+                home_score = pontos["home"]["total"] or 0
+                away_score = pontos["away"]["total"] or 0
+                mensagem += f"{home} {home_score} x {away_score} {away}\n"
+            enviar_telegram(mensagem)
+        else:
+            log("ℹ️ Nenhum jogo ao vivo no momento.")
+
+    except requests.exceptions.RequestException as e:
+        log(f"❌ Erro ao buscar jogos: {e}")
+
+def enviar_status():
+    """Envia mensagem de status periódico"""
+    msg = f"✅ Bot ativo e funcionando normalmente. ({datetime.now().strftime('%H:%M:%S')})"
+    log(msg)
+    enviar_telegram(msg)
+
+def iniciar_bot():
+    """Envia mensagem inicial"""
+    msg = f"🚀 Bot iniciado com sucesso! ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})"
+    enviar_telegram(msg)
+    log("📢 Mensagem inicial enviada ao Telegram.")
+
+# ========================
+# SCHEDULER (TAREFAS)
+# ========================
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(checar_jogos, "interval", seconds=60, id="checagem_jogos")
+scheduler.add_job(enviar_status, "interval", minutes=10, id="status_bot")
+scheduler.start(paused=False)
+
+log("⏱️ Agendador configurado: jogos a cada 60s / status a cada 10min.")
+
+# ========================
+# EXECUÇÃO
+# ========================
 
 if __name__ == "__main__":
-    print(f"⏱️ Agendador configurado: jogos a cada 60s / status a cada 10min.")
-    print(f"🚀 Servidor iniciado com sucesso! ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
-    asyncio.run(bot.send_message(chat_id=CHAT_ID, text="🚀 Bot iniciado e operando com sucesso!"))
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    time.sleep(2)
+    iniciar_bot()
+    log(f"🚀 Servidor iniciado com sucesso! ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
+    app.run(host="0.0.0.0", port=10000)
