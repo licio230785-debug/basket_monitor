@@ -38,7 +38,12 @@ def get_live_games():
 
 # === LÓGICA DE ALERTA ===
 async def check_games():
+    print("⏱️ Verificando jogos ao vivo...")
     games = get_live_games()
+
+    if not games:
+        print("⚠️ Nenhum jogo ao vivo no momento.")
+        return
 
     for game in games:
         try:
