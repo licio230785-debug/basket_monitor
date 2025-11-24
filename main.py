@@ -10,16 +10,17 @@ import pytz
 # CONFIGURAÇÕES GERAIS
 # ========================
 
+# ⚠️ USANDO A API KEY FUNCIONAL
 API_URL = "https://api-basketball.p.rapidapi.com/games?live=all"
 
 HEADERS = {
-    "x-rapidapi-key": "3d94e019c7df157824472596bdc20a05",
+    "x-rapidapi-key": "3d94e019c7df157824472596bdc20a05",  # 🎯 CHAVE FUNCIONAL
     "x-rapidapi-host": "api-basketball.p.rapidapi.com",
     "Accept": "application/json",
     "Content-Type": "application/json"
 }
 
-TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"  # Ex: 1234567890:ABCdEfGHIjKLMnOpQRsTUVwXyZaBcDeFgH
+TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"  # Ex: 1234567890:ABCdEfGHIjKLMnOpQRsTUVwXyZaBcDegH
 CHAT_ID = "701402918"  # Ex: 123456789
 
 # Timezone
@@ -52,8 +53,8 @@ def log(msg):
 def enviar_telegram(msg: str):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}  # CORREÇÃO: Adicione parse_mode
-        response = requests.post(url, json=data)  # CORREÇÃO: Use json=data ao invés de data=data
+        data = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}  # ✅ parse_mode correto
+        response = requests.post(url, json=data)  # ✅ json=data
         if response.status_code != 200:
             log(f"⚠️ Falha ao enviar Telegram: {response.text}")
     except Exception as e:
@@ -67,7 +68,7 @@ def checar_jogos():
         data = resp.json()
 
         # Verificar se a API está respondendo corretamente
-        if "error":
+        if "error" in data:
             log(f"⚠️ API com erro: {data['error']}")
             return
 
