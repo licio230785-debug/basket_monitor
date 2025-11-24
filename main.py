@@ -4,21 +4,25 @@ from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import time
-import pytz  # ✅ Importamos pytz para timezone
+import pytz
 
 # ========================
 # CONFIGURAÇÕES GERAIS
 # ========================
 
 API_URL = "https://api-basketball.p.rapidapi.com/games?live=all"
+
 HEADERS = {
-    "x-rapidapi-key": "3d94e019c7df157824472596bdc20a05",  # substitua pela sua nova chave
-    "x-rapidapi-host": "api-basketball.p.rapidapi.com"
+    "x-rapidapi-key": "3d94e019c7df157824472596bdc20a05",
+    "x-rapidapi-host": "api-basketball.p.rapidapi.com",
+    "Accept": "application/json",
+    "Content-Type": "application/json"
 }
+
 TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
 CHAT_ID = "701402918"
 
-# Configura timezone (horário de Brasília)
+# Timezone
 TIMEZONE = pytz.timezone("America/Sao_Paulo")
 
 # ========================
@@ -29,7 +33,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🏀 Basket Monitor ativo e rodando!"
+    return "🏀 Basket Monitor ativo!"
 
 # ========================
 # LOGS
@@ -46,73 +50,81 @@ def log(msg):
 # ========================
 
 def enviar_telegram(msg: str):
-    """Envia mensagem para o Telegram"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {"chat_id": CHAT_ID, "text": msg}
         response = requests.post(url, data=data)
         if response.status_code != 200:
-            log(f"⚠️ Falha ao enviar mensagem Telegram: {response.text}")
+            log(f"⚠️ Falha ao enviar Telegram: {response.text}")
     except Exception as e:
-        log(f"❌ Erro no envio para Telegram: {e}")
+        log(f"❌ Erro ao enviar Telegram: {e}")
 
 def checar_jogos():
-    """Checa jogos ao vivo"""
     log("⏱️ Iniciando checagem de jogos...")
+
     try:
-        log("🕒 Buscando jogos ao vivo...")
-        resp = requests.get(API_URL, headers=HEADERS, timeout=10)
-        resp.raise_for_status()
+        resp = requests.get(API_URL, headers=HEADERS, timeout=15)
         data = resp.json()
 
-        if "response" in data and len(data["response"]) > 0:
-            jogos = data["response"]
-            log(f"🏀 {len(jogos)} jogos encontrados ao vivo.")
-            mensagem = "🏀 Jogos ao vivo:\n"
-            for jogo in jogos:
-                teams = jogo["teams"]
-                home = teams["home"]["name"]
-                away = teams["away"]["name"]
-                pontos = jogo["scores"]
-                home_score = pontos["home"]["total"] or 0
-                away_score = pontos["away"]["total"] or 0
-                mensagem += f"{home} {home_score} x {away_score} {away}\n"
-            enviar_telegram(mensagem)
-        else:
-            log("ℹ️ Nenhum jogo ao vivo no momento.")
+        # --- Tratamento de erro da API ---
+        if "response" not in data:
+            log(f"⚠️ API retornou formato inesperado: {data}")
+            return
 
-    except requests.exceptions.RequestException as e:
-        log(f"❌ Erro ao buscar jogos: {e}")
+        jogos = data["response"]
+
+        if len(jogos) == 0:
+            log("ℹ️ Nenhum jogo ao vivo no momento.")
+            return
+
+        # Monta mensagem
+        mensagem = "🏀 *Jogos ao vivo agora:*\n\n"
+        for jogo in jogos:
+            home = jogo["teams"]["home"]["name"]
+            away = jogo["teams"]["away"]["name"]
+
+            score_home = jogo["scores"]["home"]["total"] or 0
+            score_away = jogo["scores"]["away"]["total"] or 0
+
+            status = jogo["status"]["long"]
+
+            mensagem += f"📍 {status}\n"
+            mensagem += f"{home} {score_home} x {score_away} {away}\n\n"
+
+        enviar_telegram(mensagem)
+
+        log(f"🏀 {len(jogos)} jogos ao vivo enviados.")
+
+    except Exception as e:
+        log(f"❌ Erro ao checar jogos: {e}")
 
 def enviar_status():
-    """Envia mensagem de status periódico"""
-    msg = f"✅ Bot ativo e funcionando normalmente. ({datetime.now(TIMEZONE).strftime('%H:%M:%S')})"
-    log(msg)
+    msg = f"⏳ Bot ativo - {datetime.now(TIMEZONE).strftime('%H:%M:%S')}"
     enviar_telegram(msg)
+    log(msg)
 
 def iniciar_bot():
-    """Envia mensagem inicial"""
-    msg = f"🚀 Bot iniciado com sucesso! ({datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')})"
+    msg = f"🚀 Bot iniciado - {datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')}"
     enviar_telegram(msg)
-    log("📢 Mensagem inicial enviada ao Telegram.")
+    log(msg)
 
 # ========================
-# SCHEDULER (TAREFAS)
+# SCHEDULER
 # ========================
 
-scheduler = BackgroundScheduler(timezone=TIMEZONE)  # ✅ definimos o timezone aqui
+scheduler = BackgroundScheduler(timezone=TIMEZONE)
 scheduler.add_job(checar_jogos, "interval", seconds=60, id="checagem_jogos")
 scheduler.add_job(enviar_status, "interval", minutes=10, id="status_bot")
-scheduler.start(paused=False)
+scheduler.start()
 
-log("⏱️ Agendador configurado: jogos a cada 60s / status a cada 10min.")
+log("⏱️ Agendador iniciado.")
 
 # ========================
-# EXECUÇÃO
+# EXECUÇÃO NO RENDER
 # ========================
 
 if __name__ == "__main__":
     time.sleep(2)
     iniciar_bot()
-    log(f"🚀 Servidor iniciado com sucesso! ({datetime.now(TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')})")
+    log("🚀 Servidor Flask ligado.")
     app.run(host="0.0.0.0", port=10000)
