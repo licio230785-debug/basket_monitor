@@ -19,8 +19,8 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"
-CHAT_ID = "701402918"
+TELEGRAM_TOKEN = "8387307037:AAEabrAzK6LLgQsYYKGy_OgijgP1Lro8oxs"  # Ex: 1234567890:ABCdEfGHIjKLMnOpQRsTUVwXyZaBcDeFgH
+CHAT_ID = "701402918"  # Ex: 123456789
 
 # Timezone
 TIMEZONE = pytz.timezone("America/Sao_Paulo")
@@ -52,8 +52,8 @@ def log(msg):
 def enviar_telegram(msg: str):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {"chat_id": CHAT_ID, "text": msg}
-        response = requests.post(url, data=data)
+        data = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}  # CORREÇÃO: Adicione parse_mode
+        response = requests.post(url, json=data)  # CORREÇÃO: Use json=data ao invés de data=data
         if response.status_code != 200:
             log(f"⚠️ Falha ao enviar Telegram: {response.text}")
     except Exception as e:
@@ -66,27 +66,25 @@ def checar_jogos():
         resp = requests.get(API_URL, headers=HEADERS, timeout=15)
         data = resp.json()
 
-        # --- Tratamento de erro da API ---
-        if "response" not in data:
-            log(f"⚠️ API retornou formato inesperado: {data}")
+        # Verificar se a API está respondendo corretamente
+        if "error":
+            log(f"⚠️ API com erro: {data['error']}")
+            return
+
+        if "response" not in data or not data["response"]:
+            log("ℹ️ Nenhum jogo ao vivo no momento ou formato inesperado.")
             return
 
         jogos = data["response"]
+        log(f"✅ Recebidos {len(jogos)} jogos da API")
 
-        if len(jogos) == 0:
-            log("ℹ️ Nenhum jogo ao vivo no momento.")
-            return
-
-        # Monta mensagem
         mensagem = "🏀 *Jogos ao vivo agora:*\n\n"
         for jogo in jogos:
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
-
-            score_home = jogo["scores"]["home"]["total"] or 0
-            score_away = jogo["scores"]["away"]["total"] or 0
-
-            status = jogo["status"]["long"]
+            home = jogo.get("teams", {}).get("home", {}).get("name", "Sem time")
+            away = jogo.get("teams", {}).get("away", {}).get("name", "Sem time")
+            score_home = jogo.get("scores", {}).get("home", {}).get("total", 0)
+            score_away = jogo.get("scores", {}).get("away", {}).get("total", 0)
+            status = jogo.get("status", {}).get("long", "Sem status")
 
             mensagem += f"📍 {status}\n"
             mensagem += f"{home} {score_home} x {score_away} {away}\n\n"
@@ -95,6 +93,8 @@ def checar_jogos():
 
         log(f"🏀 {len(jogos)} jogos ao vivo enviados.")
 
+    except requests.exceptions.RequestException as e:
+        log(f"❌ Erro de conexão com API: {e}")
     except Exception as e:
         log(f"❌ Erro ao checar jogos: {e}")
 
